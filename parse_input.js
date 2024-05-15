@@ -30,7 +30,15 @@ async function parseTransaction() {
     const parsedTransaction = contractInterface.parseTransaction({ data: inputData });
 
     console.log("Function Name: ", parsedTransaction.name);
-    console.log("Function Parameters: ", parsedTransaction.args);
+    console.log("Function Parameters: ");
+    // Print argument names
+    const functionFragment = contractInterface.getFunction(parsedTransaction.name);
+    const argumentNames = functionFragment.inputs.map(input => input.name);
+    // console.log("Argument Names: ", argumentNames);
+    argumentNames.forEach(arg => {
+        console.log(arg.padEnd(20,' '),parsedTransaction.args[arg]);
+    });
+  
   } else {
     console.log("Transaction not found");
   }
