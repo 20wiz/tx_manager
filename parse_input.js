@@ -18,6 +18,8 @@ const abi = JSON.parse(fs.readFileSync("EasyRouter.json"));
 async function parseTransaction() {
   // Fetch transaction data
   const tx = await infuraProvider.getTransaction(txHash);
+  // Fetch transaction receipt to get the actual gas used
+  const receipt = await infuraProvider.getTransactionReceipt(txHash);
 
   if (tx) {
     // Transaction's input data
@@ -36,11 +38,26 @@ async function parseTransaction() {
     const argumentNames = functionFragment.inputs.map(input => input.name);
     // console.log("Argument Names: ", argumentNames);
     argumentNames.forEach(arg => {
-        console.log(arg.padEnd(20,' '),parsedTransaction.args[arg]);
+        const val = parsedTransaction.args[arg];
+        let valETH='';
+        if (arg.startsWith('amount')) {
+            valETH = ethers.formatEther(val);
+        }
+        console.log(arg.padEnd(20,' '),val, valETH);
     });
   
+    // Print the ETH value sent with the transaction
+    const valueETH = ethers.formatEther(tx.value);
+    console.log("ETH Value Sent: ", valueETH);
+    console.log("Gas Fee: ", tx.gasPrice);
+    console.log("Gas Limit: ", tx.gasLimit);
+    console.log("Nonce: ", tx.nonce);
   } else {
     console.log("Transaction not found");
+  }
+
+  if (receipt) {
+    console.log("Gas Used: ", receipt.gasUsed.toString());
   }
 }
 

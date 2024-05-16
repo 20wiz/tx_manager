@@ -5,7 +5,7 @@ const Auth = Buffer.from(
   process.env.INFURA_ID + ":" + process.env.INFURA_SECRET,
 ).toString("base64");
 
-const chainId = 1; // Ethereum Mainnet
+const chainId = process.env.CHAIN_ID; // Ethereum Mainnet
 
 (async () => {
   try {
