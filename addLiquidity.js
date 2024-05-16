@@ -105,6 +105,14 @@ async function addLiquidityETH(pid, amount, ethAmount) {
     console.log("Transaction hash:", tx.hash);
 }
 
+// Example usage
+getPendingRewardInUSD(process.env.PID, process.env.USER_ADDRESS).then((usdValue) => {
+    console.log('Pending reward in USD:', usdValue);
+}).catch((error) => {
+    console.error('Error calculating pending reward in USD:', error);
+});
+
+
 main().then(() => {
     console.log('done');
 });

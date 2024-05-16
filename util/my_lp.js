@@ -12,17 +12,31 @@ const UNISWAP_V2_PAIR_ABI = [
 const env = process.env;
 // Read the ABI file. (Smart contract ABI needed)
 const MASTERCHEF_ABI = JSON.parse(fs.readFileSync("./contract/MasterChef.json"));
-const MASTERCHEF_ADDRESS = process.env.MASTERCHEF_ADDRESS; // Address of the MasterChef contract
+const MASTERCHEF_ADDRESS = env.MASTERCHEF_ADDRESS; // Address of the MasterChef contract
 
-const ALCHEMY_API_URL = process.env.ALCHEMY_ETH;
-const PAIR_ADDRESS = process.env.PAIR_ADDRESS; // Address of the Uniswap V2 Pair
-const TOKEN0_SYMBOL = process.env.TOKEN0_SYMBOL; // e.g., 'ETH'
-const TOKEN1_SYMBOL = process.env.TOKEN1_SYMBOL; // e.g., 'DAI'
-const USER_ADDRESS = process.env.USER_ADDRESS; // 
+const ALCHEMY_API_URL = env.ALCHEMY_ETH;
+const PAIR_ADDRESS = env.PAIR_ADDRESS; // Address of the Uniswap V2 Pair
+const TOKEN0_SYMBOL = env.TOKEN0_SYMBOL; // e.g., 'ETH'
+const TOKEN1_SYMBOL = env.TOKEN1_SYMBOL; // e.g., 'DAI'
+const USER_ADDRESS = env.USER_ADDRESS; // 
 
 const provider = new ethers.providers.JsonRpcProvider(ALCHEMY_API_URL);
 const pairContract = new ethers.Contract(PAIR_ADDRESS, UNISWAP_V2_PAIR_ABI, provider);
 const masterChefContract = new ethers.Contract(MASTERCHEF_ADDRESS, MASTERCHEF_ABI, provider);
+
+const ERC20ABI = JSON.parse(fs.readFileSync("./contract/UniswapV2ERC20.json"));
+
+const rewardTokenContract = new ethers.Contract(env.TOKEN_REWARD_ADDRESS, ERC20ABI, provider);
+
+let rewardTokenSymbol;
+async function fetchRewardTokenSymbol() {
+    try {
+        symbol = await rewardTokenContract.symbol();
+        return symbol
+    } catch (error) {
+        console.error('Error fetching reward token symbol:', error);
+    }
+}
 
 
 async function getReserves() {
@@ -77,6 +91,35 @@ async function getUserLPAmount() {
     }
 }
 
+
+async function getPendingReward(pid, userAddress) {
+    const pendingReward = await masterChefContract.pendingReward(pid, userAddress);
+
+    return pendingReward;
+}
+
+async function getTokenPriceCMC(tokenSymbol) {
+    try {
+        const apiKey = env.CMC_API_KEY;
+        const url = `https://pro-api.coinmarketcap.com/v1/cryptocurrency/quotes/latest?symbol=${tokenSymbol}`;
+
+        const headers = {
+            'X-CMC_PRO_API_KEY': apiKey,
+        };
+
+        const response = await axios.get(url, { headers });
+        const tokenPriceInUSD = response.data.data[tokenSymbol].quote.USD.price;
+
+        // console.log(`${tokenSymbol} price in USD from CoinMarketCap: $${tokenPriceInUSD}`);
+        return tokenPriceInUSD;
+        
+    } catch (error) {
+        console.error('Error fetching token price from Binance:', error);
+        throw error;
+    }
+}
+
+
 async function main() {
     const reserves = await getReserves();
     const userLP = await getUserLPAmount();
@@ -89,7 +132,20 @@ async function main() {
     console.log(`User's share of ${TOKEN1_SYMBOL} in USD: $${userUSDValueToken1.toFixed(2)}`);
     console.log(`Total user's share in USD: $${totalUserUSDValue.toFixed(2)}`);
 
-    
+    const rewardSymbol = await fetchRewardTokenSymbol();
+    // console.log('rewardSymbol=', rewardSymbol);
+    const rewardTokenPriceInUSD = await getTokenPriceCMC(rewardSymbol);
+    console.log(`${rewardSymbol} price in USD from CoinMarketCap: $${rewardTokenPriceInUSD}`);
+
+    const pid = env.PID;
+    const pendingReward = await getPendingReward(pid, USER_ADDRESS, rewardSymbol);
+    const pendingRewardAmount = (pendingReward / Math.pow(10, 18))
+    const pendingRewardInUSD = pendingRewardAmount * rewardTokenPriceInUSD;
+    console.log(`Pending reward for user ${USER_ADDRESS} ${pendingRewardAmount.toFixed(2)}`);
+    console.log('pendingRewardInUSD=', pendingRewardInUSD.toFixed(2));
+
+    const totalUserAssetValue = userUSDValueToken0 + userUSDValueToken1 + pendingRewardInUSD;
+    console.log(`Total user's asset in USD: $${totalUserAssetValue.toFixed(2)}`);
 }
 
 main();
