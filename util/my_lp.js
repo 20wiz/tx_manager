@@ -4,10 +4,10 @@ const axios = require('axios');
 const fs = require('fs');
 require('dotenv').config();
 
-const UNISWAP_V2_PAIR_ABI = [
-    "function getReserves() external view returns (uint112 reserve0, uint112 reserve1, uint32 blockTimestampLast)",
-    "function totalSupply() external view returns (uint256)"
-];
+// const UNISWAP_V2_PAIR_ABI = [
+//     "function getReserves() external view returns (uint112 reserve0, uint112 reserve1, uint32 blockTimestampLast)",
+//     "function totalSupply() external view returns (uint256)"
+// ];
 
 const env = process.env;
 // Read the ABI file. (Smart contract ABI needed)
@@ -16,16 +16,31 @@ const MASTERCHEF_ADDRESS = env.MASTERCHEF_ADDRESS; // Address of the MasterChef 
 
 const ALCHEMY_API_URL = env.ALCHEMY_ETH;
 const PAIR_ADDRESS = env.PAIR_ADDRESS; // Address of the Uniswap V2 Pair
-const TOKEN0_SYMBOL = env.TOKEN0_SYMBOL; // e.g., 'ETH'
-const TOKEN1_SYMBOL = env.TOKEN1_SYMBOL; // e.g., 'DAI'
+// const TOKEN0_SYMBOL = env.TOKEN0_SYMBOL; // e.g., 'ETH'
+// const TOKEN1_SYMBOL = env.TOKEN1_SYMBOL; // e.g., 'DAI'
 const USER_ADDRESS = env.USER_ADDRESS; // 
 
 const provider = new ethers.providers.JsonRpcProvider(ALCHEMY_API_URL);
+
+
+const UNISWAP_V2_PAIR_ABI = JSON.parse(fs.readFileSync("./contract/UniswapV2Pair.json"));
+
 const pairContract = new ethers.Contract(PAIR_ADDRESS, UNISWAP_V2_PAIR_ABI, provider);
 const masterChefContract = new ethers.Contract(MASTERCHEF_ADDRESS, MASTERCHEF_ABI, provider);
 
-const ERC20ABI = JSON.parse(fs.readFileSync("./contract/UniswapV2ERC20.json"));
+async function getPairInfo() {
+    const token0Address = await pairContract.token0();
+    const token0Contract = new ethers.Contract(token0Address, ERC20ABI, provider);
+    const token0Symbol = await token0Contract.symbol();
+    const token1Address = await pairContract.token1();
+    const token1Contract = new ethers.Contract(token1Address, ERC20ABI, provider);
+    const token1SymbolOrg = (await token1Contract.symbol()) ;
+    const token1Symbol = token1SymbolOrg =='WETH'?'ETH':token1SymbolOrg;
+    return { token0Address, token0Symbol, token1Address, token1Symbol };
+}
 
+
+const ERC20ABI = JSON.parse(fs.readFileSync("./contract/UniswapV2ERC20.json"));
 const rewardTokenContract = new ethers.Contract(env.TOKEN_REWARD_ADDRESS, ERC20ABI, provider);
 
 let rewardTokenSymbol;
@@ -39,27 +54,28 @@ async function fetchRewardTokenSymbol() {
 }
 
 
-async function getReserves() {
+async function getReserves(token0Symbol,token1Symbol) {
 
     const [reserve0, reserve1] = await pairContract.getReserves();
 
-    console.log(`Reserves - ${TOKEN0_SYMBOL}: ${reserve0}, ${TOKEN1_SYMBOL}: ${reserve1}`);
+    // console.log(`Reserves - ${TOKEN0_SYMBOL}: ${reserve0}, ${TOKEN1_SYMBOL}: ${reserve1}`);
+    console.log(`Reserves - ${token0Symbol}: ${reserve0}, ${token1Symbol}: ${reserve1}`);
 
     // Fetch prices from Binance API and calculate USD value
     try {
-        const prices = await axios.get(`https://api.binance.com/api/v3/ticker/price?symbol=${TOKEN0_SYMBOL}USDT`);
+        const prices = await axios.get(`https://api.binance.com/api/v3/ticker/price?symbol=${token0Symbol}USDT`);
         const token0PriceInUSD = parseFloat(prices.data.price);
-        console.log(`${TOKEN0_SYMBOL} price in USD: $${token0PriceInUSD}`);
+        console.log(`${token0Symbol} price in USD: $${token0PriceInUSD}`);
 
         const usdValueToken0 = (reserve0 / Math.pow(10, 18)) * token0PriceInUSD;
-        console.log(`Reserve amount of ${TOKEN0_SYMBOL} in USD: $${usdValueToken0.toFixed(2)}`);
+        console.log(`Reserve amount of ${token0Symbol} in USD: $${usdValueToken0.toFixed(2)}`);
 
-        const prices1 = await axios.get(`https://api.binance.com/api/v3/ticker/price?symbol=${TOKEN1_SYMBOL}USDT`);
+        const prices1 = await axios.get(`https://api.binance.com/api/v3/ticker/price?symbol=${token1Symbol}USDT`);
         const token1PriceInUSD = parseFloat(prices1.data.price);
-        console.log(`${TOKEN1_SYMBOL} price in USD: $${token1PriceInUSD}`);
+        console.log(`${token1Symbol} price in USD: $${token1PriceInUSD}`);
 
         const usdValueToken1 = (reserve1 / Math.pow(10, 18)) * token1PriceInUSD;
-        console.log(`Reserve amount of ${TOKEN1_SYMBOL} in USD (TVL): $${usdValueToken1.toFixed(2)}`);
+        console.log(`Reserve amount of ${token1Symbol} in USD (TVL): $${usdValueToken1.toFixed(2)}`);
         return {
             usdValueToken0,
             usdValueToken1
@@ -121,15 +137,20 @@ async function getTokenPriceCMC(tokenSymbol) {
 
 
 async function main() {
-    const reserves = await getReserves();
+    const currentDateTime = new Date();
+    console.log(`Current Date and Time: ${currentDateTime.toString()}`);
+
+    const {token0Address, token0Symbol, token1Address, token1Symbol} = await getPairInfo();
+
+    const reserves = await getReserves(token0Symbol,token1Symbol);
     const userLP = await getUserLPAmount();
     //calc USD valued for user share 
     const userUSDValueToken0 = userLP.userLPShare * reserves.usdValueToken0;
     const userUSDValueToken1 = userLP.userLPShare * reserves.usdValueToken1;
     const totalUserUSDValue = userUSDValueToken0 + userUSDValueToken1;
 
-    console.log(`User's share of ${TOKEN0_SYMBOL} in USD: $${userUSDValueToken0.toFixed(2)}`);
-    console.log(`User's share of ${TOKEN1_SYMBOL} in USD: $${userUSDValueToken1.toFixed(2)}`);
+    console.log(`User's share of ${token0Symbol} in USD: $${userUSDValueToken0.toFixed(2)}`);
+    console.log(`User's share of ${token1Symbol} in USD: $${userUSDValueToken1.toFixed(2)}`);
     console.log(`Total user's share in USD: $${totalUserUSDValue.toFixed(2)}`);
 
     const rewardSymbol = await fetchRewardTokenSymbol();
