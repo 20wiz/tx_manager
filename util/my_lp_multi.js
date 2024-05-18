@@ -44,9 +44,8 @@ async function getUserPoolInfo(pid, userAddress, userInfo){
     const userUSDValueToken1 = userLPShare * pairInfo.usdValueToken1;
     const totalUserUSDValue = userUSDValueToken0 + userUSDValueToken1;
 
-    console.log(`User's share of ${pairInfo.token0Symbol} in USD: $${userUSDValueToken0.toFixed(2)}`);
-    console.log(`User's share of ${pairInfo.token1Symbol} in USD: $${userUSDValueToken1.toFixed(2)}`);
-    console.log(`Total user's share in USD: $${totalUserUSDValue.toFixed(2)}`);
+    console.log(`User's share  ${pairInfo.token0Symbol} : $${userUSDValueToken0.toFixed(2)}  ${pairInfo.token1Symbol} : $${userUSDValueToken1.toFixed(2)}`);
+    console.log(`Total user's share : $${totalUserUSDValue.toFixed(2)}`);
 
     const rewardSymbol = await getTokenSymbol(rewardToken);
     // console.log('rewardSymbol=', rewardSymbol);
@@ -58,8 +57,8 @@ async function getUserPoolInfo(pid, userAddress, userInfo){
     console.log(`${rewardSymbol} price in USD from CoinMarketCap: $${rewardTokenPriceInUSD}`);
     const pendingRewardAmount = (pendingReward / Math.pow(10, 18))
     const pendingRewardInUSD = pendingRewardAmount * rewardTokenPriceInUSD;
-    console.log(`Pending reward for user ${userAddress} ${pendingRewardAmount.toFixed(2)}`);
-    console.log('pendingRewardInUSD=', pendingRewardInUSD.toFixed(2));
+    console.log(`Pending reward for user ${userAddress} ${pendingRewardAmount.toFixed(2)}${rewardSymbol}  $${pendingRewardInUSD.toFixed(2)}`);
+    // console.log('pendingRewardInUSD=', pendingRewardInUSD.toFixed(2));
 
     const totalUserAssetValue = userUSDValueToken0 + userUSDValueToken1 + pendingRewardInUSD;
     console.log(`user's asset in ${pairInfo.token0Symbol}/${pairInfo.token1Symbol}  : $${totalUserAssetValue.toFixed(2)}`);
@@ -104,19 +103,20 @@ async function getPairInfo(pairAddress) {
     console.log(`Reserves - ${token0Symbol}: ${reserve0}, ${token1Symbol}: ${reserve1}`);
 
     // Fetch prices from Binance API and calculate USD value
-    const prices = await axios.get(`https://api.binance.com/api/v3/ticker/price?symbol=${token0Symbol}USDT`);
-    const token0PriceInUSD = parseFloat(prices.data.price);
-    console.log(`${token0Symbol} price : $${token0PriceInUSD}`);
+    const [prices0, prices1] = await Promise.all([
+        axios.get(`https://api.binance.com/api/v3/ticker/price?symbol=${token0Symbol}USDT`),
+        axios.get(`https://api.binance.com/api/v3/ticker/price?symbol=${token1Symbol}USDT`)
+    ]);
 
-    const usdValueToken0 = (reserve0 / Math.pow(10, 18)) * token0PriceInUSD;
-    console.log(`Reserve ${token0Symbol} in USD: $${usdValueToken0.toFixed(2)}`);
-
-    const prices1 = await axios.get(`https://api.binance.com/api/v3/ticker/price?symbol=${token1Symbol}USDT`);
+    const token0PriceInUSD = parseFloat(prices0.data.price);
     const token1PriceInUSD = parseFloat(prices1.data.price);
-    console.log(`${token1Symbol} price in USD: $${token1PriceInUSD}`);
-
+    console.log(`${token0Symbol} price : $${token0PriceInUSD}, ${token1Symbol} price : $${token1PriceInUSD}`);
+    const usdValueToken0 = (reserve0 / Math.pow(10, 18)) * token0PriceInUSD;
     const usdValueToken1 = (reserve1 / Math.pow(10, 18)) * token1PriceInUSD;
-    console.log(`Reserve  ${token1Symbol} : $${usdValueToken1.toFixed(2)}`);
+    console.log(`Reserve ${token0Symbol} : $${usdValueToken0.toFixed(2)},  ${token1Symbol} : $${usdValueToken1.toFixed(2)}`);
+
+    // console.log(`${token1Symbol} price : $${token1PriceInUSD}`);
+    // console.log(`Reserve ${token1Symbol} : $${usdValueToken1.toFixed(2)}`);
 
     return { token0Address, token0Symbol, token1Address, token1Symbol,
         usdValueToken0,
