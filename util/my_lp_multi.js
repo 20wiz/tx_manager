@@ -54,7 +54,7 @@ async function getUserPoolInfo(pid, userAddress, userInfo){
         getPendingReward(pid, userAddress, rewardSymbol)
     ]);
 
-    console.log(`${rewardSymbol} price in USD from CoinMarketCap: $${rewardTokenPriceInUSD}`);
+    console.log(`${rewardSymbol} price from CoinMarketCap: $${rewardTokenPriceInUSD}`);
     const pendingRewardAmount = (pendingReward / Math.pow(10, 18))
     const pendingRewardInUSD = pendingRewardAmount * rewardTokenPriceInUSD;
     console.log(`Pending reward for user ${userAddress} ${pendingRewardAmount.toFixed(2)}${rewardSymbol}  $${pendingRewardInUSD.toFixed(2)}`);
@@ -259,7 +259,17 @@ async function getPendingReward(pid, userAddress) {
     return pendingReward;
 }
 
+const tokenPriceCache = new Map();
+
 async function getTokenPriceCMC(tokenSymbol) {
+    const cacheKey = `CMC_${tokenSymbol}`;
+    const cachedData = tokenPriceCache.get(cacheKey);
+    const now = Date.now();
+
+    if (cachedData && (now - cachedData.timestamp < 10000)) {
+        return cachedData.price;
+    }
+
     try {
         const apiKey = env.CMC_API_KEY;
         const url = `https://pro-api.coinmarketcap.com/v1/cryptocurrency/quotes/latest?symbol=${tokenSymbol}`;
@@ -271,15 +281,15 @@ async function getTokenPriceCMC(tokenSymbol) {
         const response = await axios.get(url, { headers });
         const tokenPriceInUSD = response.data.data[tokenSymbol].quote.USD.price;
 
-        // console.log(`${tokenSymbol} price in USD from CoinMarketCap: $${tokenPriceInUSD}`);
+        tokenPriceCache.set(cacheKey, { price: tokenPriceInUSD, timestamp: now });
+
         return tokenPriceInUSD;
         
     } catch (error) {
-        console.error('Error fetching token price from Binance:', error);
+        console.error('Error fetching token price from CoinMarketCap:', error);
         throw error;
     }
 }
-
 
 async function main() {
     const currentDateTime = new Date();
