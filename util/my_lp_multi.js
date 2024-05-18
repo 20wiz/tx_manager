@@ -2,8 +2,8 @@
 const { ethers } = require('ethers');
 const axios = require('axios');
 const fs = require('fs');
+const { MongoClient } = require('mongodb');
 require('dotenv').config();
-
 
 const env = process.env;
 // Read the ABI file. (Smart contract ABI needed)
@@ -11,11 +11,7 @@ const MASTERCHEF_ABI = JSON.parse(fs.readFileSync("./contract/MasterChef.json"))
 const MASTERCHEF_ADDRESS = env.MASTERCHEF_ADDRESS; // Address of the MasterChef contract
 const UNISWAP_V2_PAIR_ABI = JSON.parse(fs.readFileSync("./contract/UniswapV2Pair.json"));
 
-
 const ALCHEMY_API_URL = env.ALCHEMY_ETH;
-const PAIR_ADDRESS = env.PAIR_ADDRESS; // Address of the Uniswap V2 Pair
-// const TOKEN0_SYMBOL = env.TOKEN0_SYMBOL; // e.g., 'ETH'
-// const TOKEN1_SYMBOL = env.TOKEN1_SYMBOL; // e.g., 'DAI'
 const USER_ADDRESS = env.USER_ADDRESS; // 
 
 const provider = new ethers.providers.JsonRpcProvider(ALCHEMY_API_URL);
@@ -25,7 +21,6 @@ const provider = new ethers.providers.JsonRpcProvider(ALCHEMY_API_URL);
 
 // Use the wallet as the signer for your contracts
 const masterChefContract = new ethers.Contract(MASTERCHEF_ADDRESS, MASTERCHEF_ABI, provider);
-
 
 async function getUserPoolInfo(pid, userAddress, userInfo){
     const poolInfo = await masterChefContract.poolInfo(pid);
@@ -37,8 +32,7 @@ async function getUserPoolInfo(pid, userAddress, userInfo){
     const userLPShare = (userLPAmount / pairInfo.lpTotalSupply) ;
     const userLPSharePercent = userLPShare * 100;
     console.log(`User LP share: ${userLPSharePercent.toFixed(2)}%`);
-    // const reserves = await getReserves(pairInfo.token0Symbol,pairInfo.token1Symbol);
-    // const userLP = await getUserLPAmount();
+
     //calc USD valued for user share 
     const userUSDValueToken0 = userLPShare * pairInfo.usdValueToken0;
     const userUSDValueToken1 = userLPShare * pairInfo.usdValueToken1;
@@ -160,7 +154,7 @@ async function getUserPoolInfoAll(userAddress) {
     for (const { pid, userInfo } of results) {
         const amount = userInfo[0];
         if (amount.gt(0)) {
-            infoMap.set(pid, userInfo);
+            // infoMap.set(pid, userInfo);
             // const {token0Address, token0Symbol, token1Address, token1Symbol} = await getPairInfo(stakeToken);
             // promises.push(getPairInfoFromPid(pid).then(pairInfo => ({ pid, pairInfo })));
             promises.push(getUserPoolInfo(pid, userAddress, userInfo).then(pairInfo => ({ pid, pairInfo })));
@@ -291,22 +285,58 @@ async function getTokenPriceCMC(tokenSymbol) {
     }
 }
 
-async function main() {
-    const currentDateTime = new Date();
-    console.log(`Current Date and Time: ${currentDateTime.toString()}`);
 
-    const userInfoAll = await getUserPoolInfoAll(USER_ADDRESS);
-    
-    const totalUserAssetValueSum = Array.from(userInfoAll.values()).reduce((sum, userInfo) => sum + userInfo.totalUserAssetValue, 0);
-    console.log(`Sum of all pool's total asset value: $${totalUserAssetValueSum.toFixed(2)}`);
-    // console.log('userInfoAll=', JSON.stringify(userInfoAll, null, 2));
-    // userInfoAll.forEach((userInfo, index) => {
-    //     console.log(`Pool ${index } - Amount: ${userInfo.amount}`);
-    // });
+// const env = process.env;
+const mongoUri = env.MONGO_URI;
+const dbName = env.DB_NAME;
 
-    return;
-
+async function connectToMongo() {
+    const client = new MongoClient(mongoUri, {
+        // useNewUrlParser: true,
+        // useUnifiedTopology: true,
+        connectTimeoutMS: 5000 // Set the connection timeout to 10 seconds
+    });
+    try {
+        await client.connect();
+        console.log("Connected to MongoDB");
+        return client;
+    } catch (error) {
+        console.error('Error connecting to MongoDB:', error);
+        throw error;
+    }
 }
 
-main();
+async function insertPoolData(db, poolData) {
+    const collection = db.collection('pools');
+    await collection.insertOne(poolData);
+    console.log("Inserted pool data into MongoDB");
+}
+
+async function insertUserData(db, userData) {
+    const collection = db.collection('users');
+    await collection.insertOne(userData);
+    console.log("Inserted user data into MongoDB");
+}
+
+async function main() {
+    const client = await connectToMongo();
+    const db = client.db(dbName);
+
+    const userInfoAll = await getUserPoolInfoAll(USER_ADDRESS);
+    const totalUserAssetValueSum = Array.from(userInfoAll.values()).reduce((sum, userInfo) => sum + userInfo.totalUserAssetValue, 0);
+    console.log(`Sum of all pool's total asset value: $${totalUserAssetValueSum.toFixed(2)}`);
+
+    for (const [pid, userInfo] of userInfoAll.entries()) {
+        const currentTime = new Date().toISOString();
+        userInfo.lpTotalSupply = userInfo.lpTotalSupply.toString();
+        await insertPoolData(db, { pid, ...userInfo, timestamp: currentTime });
+        await insertUserData(db, { userAddress: USER_ADDRESS, pid, ...userInfo, timestamp: currentTime });
+    }
+
+    // Close the MongoDB connection
+    await client.close();
+    console.log("MongoDB connection closed");
+}
+
+main().catch(console.error).finally(() => process.exit(0));
 
