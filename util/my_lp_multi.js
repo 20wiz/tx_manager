@@ -9,6 +9,31 @@ const env = process.env;
 // Read the ABI file. (Smart contract ABI needed)
 const MASTERCHEF_ABI = JSON.parse(fs.readFileSync("./contract/MasterChef.json"));
 const MASTERCHEF_ADDRESS = env.MASTERCHEF_ADDRESS; // Address of the MasterChef contract
+
+async function insertPoolData(db, poolData) {
+    const collection = db.collection('pools');
+    await collection.insertOne({ ...poolData, masterChefAddress: MASTERCHEF_ADDRESS });
+    console.log("Inserted pool data into MongoDB");
+}
+
+async function insertFarmUserData(db, userData) {
+    const collection = db.collection('farm');
+    await collection.insertOne({ ...userData, masterChefAddress: MASTERCHEF_ADDRESS });
+    console.log("Inserted user data into MongoDB");
+}
+
+async function insertAssetData(db, userAddress, totalUserAssetValueUsd) {
+    const assetCollection = db.collection('assets');
+    const assetData = {
+        type: 'defi farm',
+        userAddress: userAddress,
+        totalUserAssetValueUsd: totalUserAssetValueUsd,
+        timestamp: new Date().toISOString()
+    };
+    await assetCollection.insertOne(assetData);
+    console.log("Inserted asset data into MongoDB");
+}
+
 const UNISWAP_V2_PAIR_ABI = JSON.parse(fs.readFileSync("./contract/UniswapV2Pair.json"));
 
 const ALCHEMY_API_URL = env.ALCHEMY_ETH;
@@ -75,6 +100,7 @@ async function getUserPoolInfo(pid, userAddress, userInfo){
 //     return getPairInfo(stakeToken);
 // }
 async function getPairInfo(pairAddress) {
+    console.log('pairAddress=', pairAddress);
     const pairContract = new ethers.Contract(pairAddress, UNISWAP_V2_PAIR_ABI, provider);
     const [token0Address, token1Address] = await Promise.all([
         pairContract.token0(),
@@ -84,14 +110,15 @@ async function getPairInfo(pairAddress) {
     const token0Contract = new ethers.Contract(token0Address, ERC20ABI, provider);
     const token1Contract = new ethers.Contract(token1Address, ERC20ABI, provider);
 
-    const [token0Symbol, token1SymbolOrg] = await Promise.all([
+    const [token0Symbol, token1SymbolOrg, reserves, lpTotalSupply] = await Promise.all([
         token0Contract.symbol(),
-        token1Contract.symbol()
+        token1Contract.symbol(),
+        pairContract.getReserves(),
+        pairContract.totalSupply()        
     ]);
     const token1Symbol = token1SymbolOrg =='WETH'?'ETH':token1SymbolOrg;
 
-    const [reserve0, reserve1] = await pairContract.getReserves();
-    const lpTotalSupply = await pairContract.totalSupply();
+    const [reserve0, reserve1] = reserves;
 
     // console.log(`Reserves - ${TOKEN0_SYMBOL}: ${reserve0}, ${TOKEN1_SYMBOL}: ${reserve1}`);
     console.log(`Reserves - ${token0Symbol}: ${reserve0}, ${token1Symbol}: ${reserve1}`);
@@ -312,7 +339,7 @@ async function insertPoolData(db, poolData) {
     console.log("Inserted pool data into MongoDB");
 }
 
-async function insertUserData(db, userData) {
+async function insertFarmUserData(db, userData) {
     const collection = db.collection('users');
     await collection.insertOne(userData);
     console.log("Inserted user data into MongoDB");
@@ -322,15 +349,18 @@ async function main() {
     const client = await connectToMongo();
     const db = client.db(dbName);
 
-    const userInfoAll = await getUserPoolInfoAll(USER_ADDRESS);
-    const totalUserAssetValueSum = Array.from(userInfoAll.values()).reduce((sum, userInfo) => sum + userInfo.totalUserAssetValue, 0);
+    const farmUserInfoAll = await getUserPoolInfoAll(USER_ADDRESS);
+    const totalUserAssetValueSum = Array.from(farmUserInfoAll.values()).reduce((sum, userInfo) => sum + userInfo.totalUserAssetValue, 0);
+    // sum of all assets in one farm
     console.log(`Sum of all pool's total asset value: $${totalUserAssetValueSum.toFixed(2)}`);
 
-    for (const [pid, userInfo] of userInfoAll.entries()) {
+    await insertAssetData(db, USER_ADDRESS, totalUserAssetValueSum);
+
+    for (const [pid, userInfo] of farmUserInfoAll.entries()) {
         const currentTime = new Date().toISOString();
         userInfo.lpTotalSupply = userInfo.lpTotalSupply.toString();
         await insertPoolData(db, { pid, ...userInfo, timestamp: currentTime });
-        await insertUserData(db, { userAddress: USER_ADDRESS, pid, ...userInfo, timestamp: currentTime });
+        await insertFarmUserData(db, { userAddress: USER_ADDRESS, pid, ...userInfo, timestamp: currentTime });
     }
 
     // Close the MongoDB connection
