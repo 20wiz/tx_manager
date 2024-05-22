@@ -19,12 +19,12 @@ async function insertPoolUserData(db, data) {
     // console.log("Inserted pool data into MongoDB");
 }
 
-async function insertAssetData(db, userAddress, totalUserAssetValueUsd) {
+async function insertAssetData(db, userAddress, totalUserAssetUsd) {
     const assetCollection = db.collection('assets');
     const assetData = {
         type: 'defi farm',
-        userAddress: userAddress.substring(0, 6),
-        totalUserAssetValueUsd: totalUserAssetValueUsd,
+        userAddress: userAddress,
+        totalUserAssetUsd ,
         timestamp: new Date().toISOString()
     };
     await assetCollection.insertOne(assetData);
@@ -121,8 +121,8 @@ async function getUserPoolInfo(pid, userAddress, userInfo){
     pairInfo.apr = apr.toFixed(2);
     console.log(`APR            for user ${userAddress.substring(0, 6)}: ${apr.toFixed(2)}%`);
 
-    const totalUserAssetValue = userTokenSumUSD + pendingRewardUSD;
-    console.log(`user's asset in ${pairInfo.token0Symbol}/${pairInfo.token1Symbol}  : $${totalUserAssetValue.toFixed(2)}`);
+    const poolUserAssetUSD = userTokenSumUSD + pendingRewardUSD;
+    console.log(`user's asset in ${pairInfo.token0Symbol}/${pairInfo.token1Symbol}  : $${poolUserAssetUSD.toFixed(2)}`);
     console.log('------------------------------')
     return {
         ...pairInfo,
@@ -133,7 +133,7 @@ async function getUserPoolInfo(pid, userAddress, userInfo){
         rewardTokenPriceUSD,
         pendingRewardAmount,
         pendingRewardUSD,
-        totalUserAssetValue
+        poolUserAssetUSD 
     }
 }
 // async function getPairInfoFromPid(pid) {
@@ -381,26 +381,15 @@ async function connectToMongo() {
     }
 }
 
-// async function insertPoolData(db, poolData) {
-//     const collection = db.collection('pools');
-//     await collection.insertOne(poolData);
-//     console.log("Inserted pool data into MongoDB");
-// }
-
-// async function insertFarmUserData(db, userData) {
-//     const collection = db.collection('users');
-//     await collection.insertOne(userData);
-//     console.log("Inserted user data into MongoDB");
-// }
 
 async function getFarmAssets() {
     const client = await connectToMongo();
     const db = client.db(dbName);
 
     const farmUserInfoAll = await getUserPoolInfoAll(USER_ADDRESS);
-    const totalUserAssetValueSum = Array.from(farmUserInfoAll.values()).reduce((sum, userInfo) => sum + userInfo.totalUserAssetValue, 0);
-    console.log(`Sum of all pool's total asset value: $${totalUserAssetValueSum.toFixed(2)}`);
-    await insertAssetData(db, USER_ADDRESS, totalUserAssetValueSum);
+    const totalUserAssetUSD = Array.from(farmUserInfoAll.values()).reduce((sum, userInfo) => sum + userInfo.poolUserAssetUSD, 0);
+    console.log(`Sum of all pool's total asset value: $${totalUserAssetUSD.toFixed(2)}`);
+    await insertAssetData(db, USER_ADDRESS, totalUserAssetUSD);
     // Collect all promises for inserting data
     const insertPromises = [];
 
@@ -432,6 +421,6 @@ async function getRewardTokenBalance(userAddress) {
     return rewardTokenBalance;
 }
 
-//getFarmAssets().catch(console.error).finally(() => process.exit(0));
+getFarmAssets().catch(console.error).finally(() => process.exit(0));
 
 module.exports = { getFarmAssets };
