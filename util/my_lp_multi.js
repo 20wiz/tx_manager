@@ -7,7 +7,7 @@ require('dotenv').config();
 
 const env = process.env;
 
-const BLOCKS_PER_DAY = (24 * 60 * 60) / 12.07; // Number of seconds in a day divided by block time
+const BLOCKS_PER_DAY = (24 * 60 * 60) / 13.2; // Number of seconds in a day divided by block time
 
 // Read the ABI file. (Smart contract ABI needed)
 const MASTERCHEF_ABI = JSON.parse(fs.readFileSync("./contract/MasterChef.json"));
@@ -16,25 +16,38 @@ const MASTERCHEF_ADDRESS = env.MASTERCHEF_ADDRESS; // Address of the MasterChef 
 async function insertPoolUserData(db, data) {
     const collection = db.collection('pools');
     await collection.insertOne({ ...data, masterChefAddress: MASTERCHEF_ADDRESS });
-    console.log("Inserted pool data into MongoDB");
+    // console.log("Inserted pool data into MongoDB");
 }
-
-// async function insertFarmUserData(db, userData) {
-//     const collection = db.collection('farm');
-//     await collection.insertOne({ ...userData, masterChefAddress: MASTERCHEF_ADDRESS });
-//     console.log("Inserted user data into MongoDB");
-// }
 
 async function insertAssetData(db, userAddress, totalUserAssetValueUsd) {
     const assetCollection = db.collection('assets');
     const assetData = {
         type: 'defi farm',
-        userAddress: userAddress,
+        userAddress: userAddress.substring(0, 6),
         totalUserAssetValueUsd: totalUserAssetValueUsd,
         timestamp: new Date().toISOString()
     };
     await assetCollection.insertOne(assetData);
     console.log("Inserted asset data into MongoDB");
+}
+
+// Fetch prices from Binance API and calculate USD value
+async function getTokenPrice(symbol) {
+    try {
+        const response = await axios.get(`https://api.binance.com/api/v3/ticker/price?symbol=${symbol}USDT`);
+        return parseFloat(response.data.price);
+    } catch (error) {
+        // console.error(`Error fetching price from Binance for ${symbol}:`, error);
+        try {
+            const cmcResponse = await axios.get(`https://pro-api.coinmarketcap.com/v1/cryptocurrency/quotes/latest?symbol=${symbol}`, {
+                headers: { 'X-CMC_PRO_API_KEY': process.env.CMC_API_KEY }
+            });
+            return cmcResponse.data.data[symbol].quote.USD.price;
+        } catch (cmcError) {
+            console.error(`Error fetching price from CoinMarketCap for ${symbol}:`, cmcError);
+            throw cmcError;
+        }
+    }
 }
 
 const UNISWAP_V2_PAIR_ABI = JSON.parse(fs.readFileSync("./contract/UniswapV2Pair.json"));
@@ -62,8 +75,8 @@ async function getUserPoolInfo(pid, userAddress, userInfo){
     console.log(`User LP share: ${userLPSharePercent.toFixed(2)}%`);
 
     //calc USD valued for user share 
-    const userToken0USD = userLPShare * pairInfo.usdValueToken0;
-    const userToken1USD = userLPShare * pairInfo.usdValueToken1;
+    const userToken0USD = userLPShare * pairInfo.reserveToken0USD;
+    const userToken1USD = userLPShare * pairInfo.reserveToken1USD;
     const userTokenSumUSD = userToken0USD + userToken1USD;
 
     console.log(`User's share  ${pairInfo.token0Symbol} : $${userToken0USD.toFixed(2)}  ${pairInfo.token1Symbol} : $${userToken1USD.toFixed(2)}`);
@@ -80,13 +93,12 @@ async function getUserPoolInfo(pid, userAddress, userInfo){
     console.log(`${rewardSymbol} price from CoinMarketCap: $${rewardTokenPriceUSD}`);
     const pendingRewardAmount = (pendingReward / Math.pow(10, 18))
     const pendingRewardUSD = pendingRewardAmount * rewardTokenPriceUSD;
-    console.log(`Pending reward for user ${userAddress} ${pendingRewardAmount.toFixed(2)}${rewardSymbol}  $${pendingRewardUSD.toFixed(2)}`);
-    // console.log('pendingRewardInUSD=', pendingRewardInUSD.toFixed(2));
+    console.log(`Pending reward for user ${userAddress.substring(0, 6)} ${pendingRewardAmount.toFixed(2)}${rewardSymbol}  $${pendingRewardUSD.toFixed(2)}`);
 
     const userStakeShare = userLPAmount / totalStakeToken; // same as useLPShare if all LP deposited to the masterchef
     const dailyReward = poolInfo.rewardPerBlock/1e18 * BLOCKS_PER_DAY * userStakeShare;
     const dailyRewardInUSD = dailyReward * rewardTokenPriceUSD;
-    console.log(`Daily reward for user ${userAddress} ${dailyReward.toFixed(2)}${rewardSymbol}  $${dailyRewardInUSD.toFixed(2)}`);
+    console.log(`Daily   reward for user ${userAddress.substring(0, 6)} ${dailyReward.toFixed(2)}${rewardSymbol}  $${dailyRewardInUSD.toFixed(2)}`);
         // Calculate daily reward for the user
         // const dailyReward = poolInfo.rewardPerBlock * BLOCKS_PER_DAY * userLPShare;
 
@@ -95,7 +107,7 @@ async function getUserPoolInfo(pid, userAddress, userInfo){
     pairInfo.dailyRewardUSD = dailyReward * rewardTokenPriceUSD;
     const monthlyReward = dailyReward * 30;
     const monthlyRewardInUSD = monthlyReward * rewardTokenPriceUSD;
-    console.log(`Monthly reward for user ${userAddress} ${monthlyReward.toFixed(2)}${rewardSymbol}  $${monthlyRewardInUSD.toFixed(2)}`);
+    console.log(`Monthly reward for user ${userAddress.substring(0, 6)} ${monthlyReward.toFixed(2)}${rewardSymbol}  $${monthlyRewardInUSD.toFixed(2)}`);
     pairInfo.monthlyReward = monthlyReward.toString();
     pairInfo.monthlyRewardUSD = monthlyRewardInUSD.toFixed(2);
     const mpr = (monthlyReward / userTokenSumUSD) * 100;
@@ -107,7 +119,7 @@ async function getUserPoolInfo(pid, userAddress, userInfo){
     pairInfo.yearlyRewardUSD = yearlyRewardUSD.toFixed(2);
     const apr = (yearlyRewardUSD / userTokenSumUSD) * 100;
     pairInfo.apr = apr.toFixed(2);
-    console.log(`APR for user ${userAddress}: ${apr.toFixed(2)}%`);
+    console.log(`APR            for user ${userAddress.substring(0, 6)}: ${apr.toFixed(2)}%`);
 
     const totalUserAssetValue = userTokenSumUSD + pendingRewardUSD;
     console.log(`user's asset in ${pairInfo.token0Symbol}/${pairInfo.token1Symbol}  : $${totalUserAssetValue.toFixed(2)}`);
@@ -155,24 +167,7 @@ async function getPairInfo(pairAddress) {
     console.log(`Reserves - ${token0Symbol}: ${reserve0}, ${token1Symbol}: ${reserve1}`);
 
     //token1 ETH
-    // Fetch prices from Binance API and calculate USD value
-    async function getTokenPrice(symbol) {
-        try {
-            const response = await axios.get(`https://api.binance.com/api/v3/ticker/price?symbol=${symbol}USDT`);
-            return parseFloat(response.data.price);
-        } catch (error) {
-            // console.error(`Error fetching price from Binance for ${symbol}:`, error);
-            try {
-                const cmcResponse = await axios.get(`https://pro-api.coinmarketcap.com/v1/cryptocurrency/quotes/latest?symbol=${symbol}`, {
-                    headers: { 'X-CMC_PRO_API_KEY': process.env.CMC_API_KEY }
-                });
-                return cmcResponse.data.data[symbol].quote.USD.price;
-            } catch (cmcError) {
-                console.error(`Error fetching price from CoinMarketCap for ${symbol}:`, cmcError);
-                throw cmcError;
-            }
-        }
-    }
+
 
     const [token0PriceUSD, token1PriceUSD] = await Promise.all([
         getTokenPrice(token0Symbol),
@@ -186,9 +181,11 @@ async function getPairInfo(pairAddress) {
     // console.log(`${token1Symbol} price : $${token1PriceInUSD}`);
     // console.log(`Reserve ${token1Symbol} : $${usdValueToken1.toFixed(2)}`);
 
-    return { token0Address, token0Symbol, token1Address, token1Symbol,
-        usdValueToken0: reserveToken0USD,
-        usdValueToken1: reserveToken1USD,
+    return { 
+        token0Address, token0Symbol, token0PriceUSD,  
+        token1Address, token1Symbol, token1PriceUSD,
+        reserveToken0USD,
+        reserveToken1USD,
         lpTotalSupply
     };
 }
@@ -396,13 +393,12 @@ async function connectToMongo() {
 //     console.log("Inserted user data into MongoDB");
 // }
 
-async function main() {
+async function getFarmAssets() {
     const client = await connectToMongo();
     const db = client.db(dbName);
 
     const farmUserInfoAll = await getUserPoolInfoAll(USER_ADDRESS);
     const totalUserAssetValueSum = Array.from(farmUserInfoAll.values()).reduce((sum, userInfo) => sum + userInfo.totalUserAssetValue, 0);
-    // sum of all assets in one farm
     console.log(`Sum of all pool's total asset value: $${totalUserAssetValueSum.toFixed(2)}`);
     await insertAssetData(db, USER_ADDRESS, totalUserAssetValueSum);
     // Collect all promises for inserting data
@@ -431,11 +427,11 @@ async function getRewardTokenBalance(userAddress) {
     const rewardTokenBalance = await rewardTokenContract.balanceOf(userAddress);
     const rewardTokenBalanceInUSD = rewardTokenBalance / Math.pow(10, 18) * 0.5;
 
-    console.log(`Reward token balance for user ${USER_ADDRESS}: ${rewardTokenBalance.toString()} `);
-    console.log(`Reward token balance in USD for user ${USER_ADDRESS}: $${rewardTokenBalanceInUSD.toFixed(2)}`);
+    console.log(`Reward token balance for user ${USER_ADDRESS.substring(0, 6)}: ${rewardTokenBalance.toString()} `);
+    console.log(`Reward token balance in USD for user ${USER_ADDRESS.substring(0, 6)}: $${rewardTokenBalanceInUSD.toFixed(2)}`);
     return rewardTokenBalance;
 }
 
-main().catch(console.error).finally(() => process.exit(0));
+//getFarmAssets().catch(console.error).finally(() => process.exit(0));
 
-
+module.exports = { getFarmAssets };
