@@ -421,6 +421,6 @@ async function getRewardTokenBalance(userAddress) {
     return rewardTokenBalance;
 }
 
-getFarmAssets().catch(console.error).finally(() => process.exit(0));
+getFarmAssets().catch(console.error);
 
 module.exports = { getFarmAssets };

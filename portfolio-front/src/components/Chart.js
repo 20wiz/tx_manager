@@ -19,7 +19,7 @@ const Chart = () => {
                     const labels = data.map((_, index) => `Data ${index + 1}`);
                     const userTokenSumUSD = data.map(item => item.userTokenSumUSD);
                     const pendingRewardUSD = data.map(item => item.pendingRewardUSD);
-                    const totalUserAssetValue = data.map(item => item.totalUserAssetValue);
+                    const poolUserAssetUSD = data.map(item => item.poolUserAssetUSD);
 
                     setChartData({
                         labels,
@@ -38,7 +38,7 @@ const Chart = () => {
                             },
                             {
                                 label: 'Total User Asset Value',
-                                data: totalUserAssetValue,
+                                data: poolUserAssetUSD,
                                 borderColor: 'rgba(255, 159, 64, 1)',
                                 backgroundColor: 'rgba(255, 159, 64, 0.2)',
                             },

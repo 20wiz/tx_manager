@@ -26,14 +26,14 @@ async function connectToMongo() {
 
 app.get('/api/data', async (req, res) => {
     const db = await connectToMongo();
-    const collection = db.collection('users'); // Adjust the collection name as needed
+    const collection = db.collection('pools'); // Adjust the collection name as needed
 
     try {
         const data = await collection.find({}).toArray();
         const chartData = data.map(item => ({
             userTokenSumUSD: item.userTokenSumUSD,
             pendingRewardUSD: item.pendingRewardUSD,
-            totalUserAssetValue: item.totalUserAssetValue,
+            poolUserAssetUSD: item.poolUserAssetUSD,
             timestamp: item.timestamp,
         }));
         res.json(chartData);
