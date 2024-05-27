@@ -29,8 +29,9 @@ app.get('/api/data', async (req, res) => {
     const collection = db.collection('pools'); // Adjust the collection name as needed
 
     try {
-        const data = await collection.find({}).toArray();
+        const data = await collection.find({}).sort({ timestamp: -1 }).limit(100).toArray();
         const chartData = data.map(item => ({
+            poolName: item.token0Symbol+'-'+item.token1Symbol,
             userTokenSumUSD: item.userTokenSumUSD,
             pendingRewardUSD: item.pendingRewardUSD,
             poolUserAssetUSD: item.poolUserAssetUSD,

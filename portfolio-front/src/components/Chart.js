@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import axios from 'axios';
 import { Line } from 'react-chartjs-2';
 import 'chart.js/auto';
+import 'chartjs-adapter-moment';
 
 const Chart = () => {
     const [chartData, setChartData] = useState({
@@ -13,40 +14,46 @@ const Chart = () => {
         const fetchData = async () => {
             try {
                 const response = await axios.get('/api/data');
-                const data = response.data;
+                const rawData = response.data;
 
-                if (data && data.length > 0) {
-                    const labels = data.map((_, index) => `Data ${index + 1}`);
-                    const userTokenSumUSD = data.map(item => item.userTokenSumUSD);
-                    const pendingRewardUSD = data.map(item => item.pendingRewardUSD);
-                    const poolUserAssetUSD = data.map(item => item.poolUserAssetUSD);
+                // Group data by poolName
+                const dataByPool = rawData.reduce((acc, item) => {
+                    const poolName = item.poolName;
+                    if (!acc[poolName]) {
+                        acc[poolName] = [];
+                    }
+                    acc[poolName].push(item);
+                    return acc;
+                }, {});
 
-                    setChartData({
-                        labels,
-                        datasets: [
-                            {
-                                label: 'User Token Sum USD',
-                                data: userTokenSumUSD,
-                                borderColor: 'rgba(75, 192, 192, 1)',
-                                backgroundColor: 'rgba(75, 192, 192, 0.2)',
-                            },
-                            {
-                                label: 'Pending Reward USD',
-                                data: pendingRewardUSD,
-                                borderColor: 'rgba(153, 102, 255, 1)',
-                                backgroundColor: 'rgba(153, 102, 255, 0.2)',
-                            },
-                            {
-                                label: 'Total User Asset Value',
-                                data: poolUserAssetUSD,
-                                borderColor: 'rgba(255, 159, 64, 1)',
-                                backgroundColor: 'rgba(255, 159, 64, 0.2)',
-                            },
-                        ],
+                // Prepare datasets and labels
+                const datasets = [];
+                const labels = rawData.map(item => {
+                    const date = new Date(item.timestamp);
+                    return `${date.getFullYear()}-${date.getMonth() + 1}-${date.getDate()} ${date.getHours()}:${date.getMinutes() < 10 ? '0' : ''}${date.getMinutes()}`;
+                }).filter((value, index, self) => self.indexOf(value) === index); // Remove duplicate labels
+
+                Object.keys(dataByPool).forEach(poolName => {
+                    const data = dataByPool[poolName];
+                    datasets.push({
+                        label: poolName,
+                        data: labels.map(label => {
+                            const item = data.find(d => {
+                                const date = new Date(d.timestamp);
+                                const formattedDate = `${date.getFullYear()}-${date.getMonth() + 1}-${date.getDate()} ${date.getHours()}:${date.getMinutes() < 10 ? '0' : ''}${date.getMinutes()}`;
+                                return formattedDate === label;
+                            });
+                            return item ? item.poolUserAssetUSD : null;
+                        }),
+                        fill: false,
+                        borderColor: getRandomColor(), // Implement getRandomColor function to assign colors
                     });
-                } else {
-                    console.error('No data available');
-                }
+                });
+
+                setChartData({
+                    labels,
+                    datasets
+                });
             } catch (error) {
                 console.error('Error fetching data:', error);
             }
@@ -55,13 +62,39 @@ const Chart = () => {
         fetchData();
     }, []);
 
+    // Function to generate random colors for the datasets
+    const getRandomColor = () => {
+        const letters = '0123456789ABCDEF';
+        let color = '#';
+        for (let i = 0; i < 6; i++) {
+            color += letters[Math.floor(Math.random() * 16)];
+        }
+        return color;
+    };
+
+    const options= {
+        scales: {
+          x: {
+            type: 'time',
+            time: {
+              parser: 'yyyy-MM-dd HH:mm', // Adjust based on your date format
+              tooltipFormat: 'yyyy-MM-dd HH:mm',
+              unit: 'minute'
+            },
+            title: {
+              display: true,
+              text: 'Date and Time'
+            }
+          }
+        }
+      }
+
     return (
         <div>
-            <h2>Asset Data Chart</h2>
-            <Line data={chartData} />
+            <h2>Pool Asset Data Chart</h2>
+            <Line data={chartData} options={options} />
         </div>
     );
 };
 
 export default Chart;
-
