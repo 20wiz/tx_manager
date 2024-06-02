@@ -48,13 +48,13 @@ async function getTokenDecimal(tokenSymbol) {
 
 
 async function insertPoolUserData(db, data) {
-    const collection = db.collection('pools_test');
+    const collection = db.collection('pools');
     await collection.insertOne({ ...data, masterChefAddress: MASTERCHEF_ADDRESS });
     // console.log("Inserted pool data into MongoDB");
 }
 
 async function insertAssetData(db, userAddress, totalUserAssetUsd) {
-    const assetCollection = db.collection('assets_test');
+    const assetCollection = db.collection('assets');
     const assetData = {
         type: 'defi farm',
         userAddress: userAddress,
