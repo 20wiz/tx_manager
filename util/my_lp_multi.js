@@ -13,14 +13,48 @@ const BLOCKS_PER_DAY = (24 * 60 * 60) / 13.2; // Number of seconds in a day divi
 const MASTERCHEF_ABI = JSON.parse(fs.readFileSync("./contract/MasterChef.json"));
 const MASTERCHEF_ADDRESS = env.MASTERCHEF_ADDRESS; // Address of the MasterChef contract
 
+let tokenInfo;
+
+async function getEthTokensInfo(db) {
+
+    try {
+        const tokensCollection = db.collection('tokens');
+        const ethTokensArray = await tokensCollection.find({ chain: 'ETH' }).toArray();
+        tokenInfo = ethTokensArray.reduce((acc, token) => {
+            acc[token.symbol] = token;
+            return acc;
+        }, {});
+        // console.log('ETH Tokens:', ethTokens);
+        // return ethTokens;
+    } catch (error) {
+        console.error('Error fetching ETH tokens info:', error);
+        throw error;
+    } 
+}
+
+async function getTokenDecimal(tokenSymbol) {
+    try {
+        if (tokenInfo[tokenSymbol] && tokenInfo[tokenSymbol].decimal !== undefined) {
+            return tokenInfo[tokenSymbol].decimal;
+        } else {
+            throw new Error(`Decimals not found for token: ${tokenSymbol}`);
+        }
+    } catch (error) {
+        console.error(`Error fetching token decimals for ${tokenSymbol}:`, error);
+        throw error;
+    }
+}
+
+
+
 async function insertPoolUserData(db, data) {
-    const collection = db.collection('pools');
+    const collection = db.collection('pools_test');
     await collection.insertOne({ ...data, masterChefAddress: MASTERCHEF_ADDRESS });
     // console.log("Inserted pool data into MongoDB");
 }
 
 async function insertAssetData(db, userAddress, totalUserAssetUsd) {
-    const assetCollection = db.collection('assets');
+    const assetCollection = db.collection('assets_test');
     const assetData = {
         type: 'defi farm',
         userAddress: userAddress,
@@ -174,16 +208,21 @@ async function getPairInfo(pairAddress) {
         getTokenPrice(token1Symbol)
     ]);
     console.log(`${token0Symbol} price : $${token0PriceUSD}, ${token1Symbol} price : $${token1PriceUSD}`);
-    const reserveToken0USD = (reserve0 / Math.pow(10, 18)) * token0PriceUSD;
-    const reserveToken1USD = (reserve1 / Math.pow(10, 18)) * token1PriceUSD;
+    
+    const token0Decimal = await getTokenDecimal(token0Symbol);
+    const token1Decimal = await getTokenDecimal(token1Symbol);
+    
+    const reserveToken0USD = (reserve0 / Math.pow(10, token0Decimal)) * token0PriceUSD;
+    const reserveToken1USD = (reserve1 / Math.pow(10, token1Decimal)) * token1PriceUSD;
+    
     console.log(`Reserve ${token0Symbol} : $${reserveToken0USD.toFixed(2)},  ${token1Symbol} : $${reserveToken1USD.toFixed(2)}`);
 
     // console.log(`${token1Symbol} price : $${token1PriceInUSD}`);
     // console.log(`Reserve ${token1Symbol} : $${usdValueToken1.toFixed(2)}`);
 
     return { 
-        token0Address, token0Symbol, token0PriceUSD,  
-        token1Address, token1Symbol, token1PriceUSD,
+        token0Symbol, token0PriceUSD,  
+        token1Symbol, token1PriceUSD,
         reserveToken0USD,
         reserveToken1USD,
         lpTotalSupply
@@ -277,14 +316,16 @@ async function getReserves(pairContract, token0Symbol,token1Symbol) {
         const token0PriceInUSD = parseFloat(prices.data.price);
         console.log(`${token0Symbol} price in USD: $${token0PriceInUSD}`);
 
-        const usdValueToken0 = (reserve0 / Math.pow(10, 18)) * token0PriceInUSD;
+        const token0Decimals = await getTokenDecimal(token0Symbol);
+        const usdValueToken0 = (reserve0 / Math.pow(10, token0Decimals)) * token0PriceInUSD;
         console.log(`Reserve amount of ${token0Symbol} in USD: $${usdValueToken0.toFixed(2)}`);
 
         const prices1 = await axios.get(`https://api.binance.com/api/v3/ticker/price?symbol=${token1Symbol}USDT`);
         const token1PriceInUSD = parseFloat(prices1.data.price);
         console.log(`${token1Symbol} price in USD: $${token1PriceInUSD}`);
 
-        const usdValueToken1 = (reserve1 / Math.pow(10, 18)) * token1PriceInUSD;
+        const token1Decimals = await getTokenDecimal(token1Symbol);
+        const usdValueToken1 = (reserve1 / Math.pow(10, token1Decimals)) * token1PriceInUSD;
         console.log(`Reserve amount of ${token1Symbol} in USD (TVL): $${usdValueToken1.toFixed(2)}`);
         return {
             usdValueToken0,
@@ -386,6 +427,8 @@ async function getFarmAssets() {
     const client = await connectToMongo();
     const db = client.db(dbName);
 
+    await getEthTokensInfo(db);
+
     const farmUserInfoAll = await getUserPoolInfoAll(USER_ADDRESS);
     const totalUserAssetUSD = Array.from(farmUserInfoAll.values()).reduce((sum, userInfo) => sum + userInfo.poolUserAssetUSD, 0);
     console.log(`Sum of all pool's total asset value: $${totalUserAssetUSD.toFixed(2)}`);
@@ -421,6 +464,7 @@ async function getRewardTokenBalance(userAddress) {
     return rewardTokenBalance;
 }
 
-getFarmAssets().catch(console.error);
+getFarmAssets()
+// getFarmAssets().catch(console.error);
 
 module.exports = { getFarmAssets };
