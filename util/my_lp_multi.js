@@ -45,16 +45,23 @@ async function getTokenDecimal(tokenSymbol) {
     }
 }
 
+let  collection_pool = 'pools';
+let  collection_asset = 'assets';
 
+const debug = false;
+if (debug) {
+    collection_pool += '_test';
+    collection_asset += '_test';
+}
 
 async function insertPoolUserData(db, data) {
-    const collection = db.collection('pools');
+    const collection = db.collection(collection_pool);
     await collection.insertOne({ ...data, masterChefAddress: MASTERCHEF_ADDRESS });
     // console.log("Inserted pool data into MongoDB");
 }
 
 async function insertAssetData(db, userAddress, totalUserAssetUsd) {
-    const assetCollection = db.collection('assets');
+    const assetCollection = db.collection(collection_asset);
     const assetData = {
         type: 'defi farm',
         userAddress: userAddress,
@@ -139,6 +146,7 @@ async function getUserPoolInfo(pid, userAddress, userInfo){
         // Add daily reward to userInfo
     pairInfo.dailyReward = dailyReward.toString();
     pairInfo.dailyRewardUSD = dailyReward * rewardTokenPriceUSD;
+    pairInfo.dailyRewardUSDPer1K = dailyReward * rewardTokenPriceUSD *1000 / userTokenSumUSD;
     const monthlyReward = dailyReward * 30;
     const monthlyRewardInUSD = monthlyReward * rewardTokenPriceUSD;
     console.log(`Monthly reward for user ${userAddress.substring(0, 6)} ${monthlyReward.toFixed(2)}${rewardSymbol}  $${monthlyRewardInUSD.toFixed(2)}`);
