@@ -32,19 +32,21 @@ const Chart = () => {
                     const date = new Date(item.timestamp);
                     return `${date.getFullYear()}-${date.getMonth() + 1}-${date.getDate()} ${date.getHours()}:${date.getMinutes() < 10 ? '0' : ''}${date.getMinutes()}`;
                 }).filter((value, index, self) => self.indexOf(value) === index); // Remove duplicate labels
-
+// debugger;
                 Object.keys(dataByPool).forEach(poolName => {
                     const data = dataByPool[poolName];
+                    // debugger;
                     datasets.push({
                         label: poolName,
-                        data: labels.map(label => {
-                            const item = data.find(d => {
-                                const date = new Date(d.timestamp);
-                                const formattedDate = `${date.getFullYear()}-${date.getMonth() + 1}-${date.getDate()} ${date.getHours()}:${date.getMinutes() < 10 ? '0' : ''}${date.getMinutes()}`;
-                                return formattedDate === label;
-                            });
-                            return item ? item.poolUserAssetUSD : null;
-                        }),
+                        // data: labels.map(label => {
+                        //     const item = data.find(d => {
+                        //         const date = new Date(d.timestamp);
+                        //         const formattedDate = `${date.getFullYear()}-${date.getMonth() + 1}-${date.getDate()} ${date.getHours()}:${date.getMinutes() < 10 ? '0' : ''}${date.getMinutes()}`;
+                        //         return formattedDate === label;
+                        //     });
+                        //     return item ? item.poolUserAssetUSD : null;
+                        // }),
+                        data: data.map(item => item.poolUserAssetUSD),
                         fill: false,
                         borderColor: getRandomColor(), // Implement getRandomColor function to assign colors
                     });
