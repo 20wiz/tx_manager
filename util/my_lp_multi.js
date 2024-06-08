@@ -13,7 +13,29 @@ const BLOCKS_PER_DAY = (24 * 60 * 60) / 13.2; // Number of seconds in a day divi
 const MASTERCHEF_ABI = JSON.parse(fs.readFileSync("./contract/MasterChef.json"));
 const MASTERCHEF_ADDRESS = env.MASTERCHEF_ADDRESS; // Address of the MasterChef contract
 
+let  collection_pool = 'pools';
+let  collection_asset = 'assets';
+
+const debug = false;
+if (debug) {
+    collection_pool += '_test';
+    collection_asset += '_test';
+}
+
+
 let tokenInfo;
+
+async function getUserAddresses(db) {
+    try {
+        const userAddressCollection = db.collection('user_address');
+        const userAddresses = await userAddressCollection.find({}).toArray();
+        return userAddresses.map(user => user.address);
+    } catch (error) {
+        console.error('Error fetching user addresses:', error);
+        throw error;
+    }
+}
+
 
 async function getEthTokensInfo(db) {
 
@@ -45,14 +67,6 @@ async function getTokenDecimal(tokenSymbol) {
     }
 }
 
-let  collection_pool = 'pools';
-let  collection_asset = 'assets';
-
-const debug = false;
-if (debug) {
-    collection_pool += '_test';
-    collection_asset += '_test';
-}
 
 async function insertPoolUserData(db, data) {
     const collection = db.collection(collection_pool);
@@ -94,7 +108,7 @@ async function getTokenPrice(symbol) {
 const UNISWAP_V2_PAIR_ABI = JSON.parse(fs.readFileSync("./contract/UniswapV2Pair.json"));
 
 const ALCHEMY_API_URL = env.ALCHEMY_ETH;
-const USER_ADDRESS = env.USER_ADDRESS; // 
+// const USER_ADDRESS = env.USER_ADDRESS; // 
 
 const provider = new ethers.providers.JsonRpcProvider(ALCHEMY_API_URL);
 
@@ -166,7 +180,11 @@ async function getUserPoolInfo(pid, userAddress, userInfo){
     const poolUserAssetUSD = userTokenSumUSD + pendingRewardUSD;
     console.log(`user's asset in ${pairInfo.token0Symbol}/${pairInfo.token1Symbol}  : $${poolUserAssetUSD.toFixed(2)}`);
     console.log('------------------------------')
+    let poolName = pairInfo.token0Symbol+"-"+pairInfo.token1Symbol;
+    poolName = poolName.replace("WETH","ETH");
+
     return {
+        poolName,
         ...pairInfo,
         userToken0USD,
         userToken1USD,
@@ -345,11 +363,11 @@ async function getReserves(pairContract, token0Symbol,token1Symbol) {
 }
 
 //get user LP amount from MasterChef (yield farm)
-async function getUserLPAmount() {
+async function getUserLPAmount(user_address) {
 
     try {
         const poolId = process.env.PID; // Replace with the actual pool ID
-        const userInfo = await masterChefContract.userInfo(poolId, USER_ADDRESS);
+        const userInfo = await masterChefContract.userInfo(poolId, user_address);
         const userLPAmount = userInfo.amount;
         console.log(`User LP amount: ${userLPAmount.toString()}`);
         const totalSupply = await pairContract.totalSupply();
@@ -435,31 +453,40 @@ async function getFarmAssets() {
     const client = await connectToMongo();
     const db = client.db(dbName);
 
+    const userAddresses = await getUserAddresses(db);
+    console.log(userAddresses);
+    // return;
+
     await getEthTokensInfo(db);
 
-    const farmUserInfoAll = await getUserPoolInfoAll(USER_ADDRESS);
-    const totalUserAssetUSD = Array.from(farmUserInfoAll.values()).reduce((sum, userInfo) => sum + userInfo.poolUserAssetUSD, 0);
-    console.log(`Sum of all pool's total asset value: $${totalUserAssetUSD.toFixed(2)}`);
-    await insertAssetData(db, USER_ADDRESS, totalUserAssetUSD);
-    // Collect all promises for inserting data
-    const insertPromises = [];
+    // const userAddresses = await getAllUserAddresses(db);
+    for (const user of userAddresses) {
 
-    for (const [pid, userPoolInfo] of farmUserInfoAll.entries()) {
-        const currentTime = new Date().toISOString();
-        userPoolInfo.lpTotalSupply = userPoolInfo.lpTotalSupply.toString();
+        const farmUserInfoAll = await getUserPoolInfoAll(user);
+        const totalUserAssetUSD = Array.from(farmUserInfoAll.values()).reduce((sum, userInfo) => sum + userInfo.poolUserAssetUSD, 0);
+        console.log(`Sum of all pool's total asset value: $${totalUserAssetUSD.toFixed(2)}`);
+        await insertAssetData(db, user, totalUserAssetUSD);
+        // Collect all promises for inserting data
+        const insertPromises = [];
+    
+        for (const [pid, userPoolInfo] of farmUserInfoAll.entries()) {
+            const currentTime = new Date().toISOString();
+            userPoolInfo.lpTotalSupply = userPoolInfo.lpTotalSupply.toString();
+    
+            insertPromises.push(insertPoolUserData(db, { userAddress: user, pid, ...userPoolInfo, timestamp: currentTime }));
+            // insertPromises.push(insertUserData(db, { userAddress: USER_ADDRESS, pid, ...userInfo, timestamp: currentTime }));
+        }
+        // Execute all insert operations in parallel
+        await Promise.all(insertPromises);
 
-        insertPromises.push(insertPoolUserData(db, { userAddress: USER_ADDRESS, pid, ...userPoolInfo, timestamp: currentTime }));
-        // insertPromises.push(insertUserData(db, { userAddress: USER_ADDRESS, pid, ...userInfo, timestamp: currentTime }));
+        await getRewardTokenBalance(user);
     }
-
-    // Execute all insert operations in parallel
-    await Promise.all(insertPromises);
 
     // Close the MongoDB connection
     await client.close();
     console.log("MongoDB connection closed");
 
-    await getRewardTokenBalance(USER_ADDRESS);
+
 }
 
 async function getRewardTokenBalance(userAddress) {
@@ -467,8 +494,8 @@ async function getRewardTokenBalance(userAddress) {
     const rewardTokenBalance = await rewardTokenContract.balanceOf(userAddress);
     const rewardTokenBalanceInUSD = rewardTokenBalance / Math.pow(10, 18) * 0.5;
 
-    console.log(`Reward token balance for user ${USER_ADDRESS.substring(0, 6)}: ${rewardTokenBalance.toString()} `);
-    console.log(`Reward token balance in USD for user ${USER_ADDRESS.substring(0, 6)}: $${rewardTokenBalanceInUSD.toFixed(2)}`);
+    console.log(`Reward token balance for user ${userAddress.substring(0, 6)}: ${rewardTokenBalance.toString()} `);
+    console.log(`Reward token balance in USD for user ${userAddress.substring(0, 6)}: $${rewardTokenBalanceInUSD.toFixed(2)}`);
     return rewardTokenBalance;
 }
 
