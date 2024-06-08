@@ -16,7 +16,7 @@ const MASTERCHEF_ADDRESS = env.MASTERCHEF_ADDRESS; // Address of the MasterChef 
 let  collection_pool = 'pools';
 let  collection_asset = 'assets';
 
-const debug = false;
+const debug = true;
 if (debug) {
     collection_pool += '_test';
     collection_asset += '_test';
@@ -501,5 +501,11 @@ async function getRewardTokenBalance(userAddress) {
 
 getFarmAssets()
 // getFarmAssets().catch(console.error);
+
+
+
+
+
+
 
 module.exports = { getFarmAssets };
