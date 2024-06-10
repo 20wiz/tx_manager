@@ -55,7 +55,7 @@ async function getLastDataForAllPoolsForDay(db, date) {
 }
 
 async function insertPoolDataForDay(db, dataArray) {
-    const collection = db.collection('pools_daily');
+    const collection = db.collection(collection_pool_daily);
     if (!Array.isArray(dataArray)) {
         throw new Error("Expected dataArray to be an array");
     }
@@ -63,15 +63,11 @@ async function insertPoolDataForDay(db, dataArray) {
     // console.log("Inserted pool data for the specified day into MongoDB");
 }
 
-async function main() {
+async function processDateRange(startDate, endDate) {
     const client = await connectToMongo();
     const db = client.db(dbName);
 
-    // const startDate = new Date('2024-05-19'); // Replace with your start date
-    const startDate = new Date('2024-05-19'); // Replace with your start date
-    const endDate = new Date('2024-06-07'); // Replace with your end date
-
-    for (let date = startDate; date <= endDate; date.setDate(date.getDate() + 1)) {
+    for (let date = new Date(startDate); date <= endDate; date.setDate(date.getDate() + 1)) {
         const formattedDate = date.toISOString().split('T')[0];
         const data = await getLastDataForAllPoolsForDay(db, formattedDate);
         console.log(`Data for ${formattedDate}:`, data);
@@ -81,7 +77,23 @@ async function main() {
     // Close the MongoDB connection
     await client.close();
     console.log("MongoDB connection closed");
-
 }
 
-main();
+async function main() { //  when batch process is required
+    const startDate = new Date('2024-05-19'); // Replace with your start date
+    const endDate = new Date('2024-06-07'); // Replace with your end date
+    await processDateRange(startDate, endDate);
+}
+
+// Schedule the task to run at 00:05 every day,  insert close price or assets for the last day
+cron.schedule('5 0 * * *', async () => {
+    const yesterday = new Date();
+    yesterday.setDate(yesterday.getDate() - 1);
+    const startDate = new Date(yesterday);
+    const endDate = new Date(yesterday);
+    await processDateRange(startDate, endDate);
+    console.log("Scheduled task completed");
+});
+
+// Uncomment to run main function manually
+// main();
