@@ -1,5 +1,6 @@
 const { MongoClient } = require('mongodb');
 require('dotenv').config();
+const cron = require('node-cron');
 
 const env = process.env;
 
@@ -87,8 +88,10 @@ async function main() { //  when batch process is required
 
 // Schedule the task to run at 00:05 every day,  insert close price or assets for the last day
 cron.schedule('5 0 * * *', async () => {
+// cron.schedule('* * * * *', async () => {
     const yesterday = new Date();
     yesterday.setDate(yesterday.getDate() - 1);
+    console.log('running for ',yesterday)
     const startDate = new Date(yesterday);
     const endDate = new Date(yesterday);
     await processDateRange(startDate, endDate);
