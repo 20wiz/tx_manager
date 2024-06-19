@@ -7,7 +7,7 @@ const env = process.env;
 let collection_pool = 'pools';
 let collection_asset = 'assets';
 let collection_pool_daily = 'pools_daily';
-const debug = true;
+const debug = false;
 if (debug) {
     collection_pool += '_test';
     collection_asset += '_test';

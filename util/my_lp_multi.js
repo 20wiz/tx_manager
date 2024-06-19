@@ -86,24 +86,58 @@ async function insertAssetData(db, userAddress, totalUserAssetUsd) {
     console.log("Inserted asset data into MongoDB");
 }
 
+const symbolToPriceMap = {};
+const symbolToAddressMap = {};
+
+async function getTokenPriceN() {
+    try {
+        const response = await axios.get(`https://api.neopin.io/napi/v2/coin`);
+        for (const coin of response.data.coinListV2) {
+            symbolToAddressMap[coin.symbol] = coin.address;
+        }
+
+        const response2 = await axios.get(`https://api.neopin.io/napi/v1/price/pool`);
+        for (const coin of response2.data.priceList) {
+            symbolToPriceMap[coin.symbol] = coin.price;
+        }
+
+
+    } catch (error) {
+        console.error('Error fetching token prices:', error);
+    }
+}
+
 // Fetch prices from Binance API and calculate USD value
 async function getTokenPrice(symbol) {
+    if (symbol=='WETH' || symbol=='weETH') symbol ='ETH';
+    const cacheKey = `price_${symbol}`;
+    const cachedData = tokenPriceCache.get(cacheKey);
+    const now = Date.now();
+
+    if (cachedData && (now - cachedData.timestamp < 10000)) {
+        return cachedData.price;
+    }
+
     try {
         const response = await axios.get(`https://api.binance.com/api/v3/ticker/price?symbol=${symbol}USDT`);
-        return parseFloat(response.data.price);
+        const tokenPriceInUSD = parseFloat(response.data.price);
+        tokenPriceCache.set(cacheKey, { price: tokenPriceInUSD, timestamp: now });
+        return tokenPriceInUSD;
     } catch (error) {
         // console.error(`Error fetching price from Binance for ${symbol}:`, error);
         try {
             const cmcResponse = await axios.get(`https://pro-api.coinmarketcap.com/v1/cryptocurrency/quotes/latest?symbol=${symbol}`, {
                 headers: { 'X-CMC_PRO_API_KEY': process.env.CMC_API_KEY }
             });
-            return cmcResponse.data.data[symbol].quote.USD.price;
+            const tokenPriceInUSD = cmcResponse.data.data[symbol].quote.USD.price;
+            tokenPriceCache.set(cacheKey, { price: tokenPriceInUSD, timestamp: now });
+            return tokenPriceInUSD;
         } catch (cmcError) {
             console.error(`Error fetching price from CoinMarketCap for ${symbol}:`, cmcError);
             throw cmcError;
         }
     }
-}
+}   
 
 const UNISWAP_V2_PAIR_ABI = JSON.parse(fs.readFileSync("./contract/UniswapV2Pair.json"));
 
@@ -395,10 +429,12 @@ async function getTokenBalanceOf(tokenAddress, userAddress) {
     return balance;
 }
 
-const tokenPriceCache = new Map();
+
+
+let tokenPriceCache;
 
 async function getTokenPriceCMC(tokenSymbol) {
-    const cacheKey = `CMC_${tokenSymbol}`;
+    const cacheKey = `price_${tokenSymbol}`;
     const cachedData = tokenPriceCache.get(cacheKey);
     const now = Date.now();
 
@@ -453,6 +489,8 @@ async function getFarmAssets() {
     const client = await connectToMongo();
     const db = client.db(dbName);
 
+    tokenPriceCache = new Map();
+
     const userAddresses = await getUserAddresses(db);
     console.log(userAddresses);
     // return;
@@ -499,11 +537,15 @@ async function getRewardTokenBalance(userAddress) {
     return rewardTokenBalance;
 }
 
-getFarmAssets()
+// getFarmAssets()
 // getFarmAssets().catch(console.error);
+// async function main() {
+//     await getTokenPriceN()
+//     console.log(symbolToPriceMap)
+    
+// }
 
-
-
+// main()
 
 
 
