@@ -16,7 +16,7 @@ const MASTERCHEF_ADDRESS = env.MASTERCHEF_ADDRESS; // Address of the MasterChef 
 let  collection_pool = 'pools';
 let  collection_asset = 'assets';
 
-const debug = true;
+const debug = !true;
 if (debug) {
     collection_pool += '_test';
     collection_asset += '_test';
@@ -86,7 +86,7 @@ async function insertAssetData(db, userAddress, totalUserAssetUsd) {
     console.log("Inserted asset data into MongoDB");
 }
 
-const symbolToPriceMap = {};
+// const symbolToPriceMap =  new Map();
 const symbolToAddressMap = {};
 
 async function getTokenPriceN() {
@@ -98,7 +98,11 @@ async function getTokenPriceN() {
 
         const response2 = await axios.get(`https://api.neopin.io/napi/v1/price/pool`);
         for (const coin of response2.data.priceList) {
-            symbolToPriceMap[coin.symbol] = coin.price;
+            const cacheKey = coin.symbol.toUpperCase();
+            // console.log(coin)
+            // tokenPriceCache.set(, coin.price);
+            tokenPriceCache.set(cacheKey, { price: coin.price, timestamp: Date.now() });
+            // console.log(cacheKey, coin.price)
         }
 
 
@@ -109,12 +113,15 @@ async function getTokenPriceN() {
 
 // Fetch prices from Binance API and calculate USD value
 async function getTokenPrice(symbol) {
-    if (symbol=='WETH' || symbol=='weETH') symbol ='ETH';
-    const cacheKey = `price_${symbol}`;
+    if (symbol=='WETH' || symbol=='weETH' || symbol=='wstETH') symbol ='ETH';
+    const cacheKey = `${symbol}`;
     const cachedData = tokenPriceCache.get(cacheKey);
     const now = Date.now();
 
-    if (cachedData && (now - cachedData.timestamp < 10000)) {
+    // if (symbol=='AIOZ') {
+    //     debugger;
+    // }
+    if (cachedData && (now - cachedData.timestamp < 100000)) {
         return cachedData.price;
     }
 
@@ -174,7 +181,8 @@ async function getUserPoolInfo(pid, userAddress, userInfo){
     const rewardSymbol = await getTokenSymbol(rewardToken);
     // console.log('rewardSymbol=', rewardSymbol);
     const [rewardTokenPriceUSD, pendingReward, totalStakeToken] = await Promise.all([
-        getTokenPriceCMC(rewardSymbol),
+        // getTokenPriceCMC(rewardSymbol),
+        getTokenPrice(rewardSymbol),
         getPendingReward(pid, userAddress, rewardSymbol),
         getTokenBalanceOf(stakeToken, MASTERCHEF_ADDRESS)
     ]);
@@ -434,7 +442,7 @@ async function getTokenBalanceOf(tokenAddress, userAddress) {
 let tokenPriceCache;
 
 async function getTokenPriceCMC(tokenSymbol) {
-    const cacheKey = `price_${tokenSymbol}`;
+    const cacheKey = `${tokenSymbol}`;
     const cachedData = tokenPriceCache.get(cacheKey);
     const now = Date.now();
 
@@ -490,6 +498,7 @@ async function getFarmAssets() {
     const db = client.db(dbName);
 
     tokenPriceCache = new Map();
+    await getTokenPriceN()
 
     const userAddresses = await getUserAddresses(db);
     console.log(userAddresses);
@@ -537,15 +546,16 @@ async function getRewardTokenBalance(userAddress) {
     return rewardTokenBalance;
 }
 
-// getFarmAssets()
+getFarmAssets()
 // getFarmAssets().catch(console.error);
-// async function main() {
-//     await getTokenPriceN()
-//     console.log(symbolToPriceMap)
+async function testPrice() {
+    tokenPriceCache = new Map();
+    await getTokenPriceN()
+    console.log(tokenPriceCache)
     
-// }
+}
 
-// main()
+// testPrice()
 
 
 
